@@ -1,6 +1,7 @@
 import pygame
 from vector import *
 from neuralNetwork import *
+from trackMaker import Track
 from math import cos, sin, pi, sqrt
 from random import uniform, randint, choice
 
@@ -13,6 +14,15 @@ from random import uniform, randint, choice
 # nice pictures, car sprites to the repository
 
 TO_SQUARE = 1/sqrt(2)
+
+pygame.init()
+
+myfont = pygame.font.SysFont('Arial', 12)
+fpsClock = pygame.time.Clock()
+fps = 60
+win_width = 1280
+win_height = 720
+win = pygame.display.set_mode((win_width,win_height))
 
 def intersection_point(line1, line2):
 	x1, y1, x2, y2 = line1[0][0], line1[0][1], line1[1][0], line1[1][1]
@@ -53,7 +63,7 @@ class Car:
 		self._reg.append(self)
 		self.pos = Vector(win_width/2, win_height/2)
 		if pos:
-			self.pos = pos
+			self.pos = vectorCopy(pos)
 		self.vel = Vector()
 		self.acc = Vector()
 		
@@ -68,15 +78,15 @@ class Car:
 		self.collided = False
 		self.score = 0
 		
-		self.brain = NeuralNetwork(5, 3)
-		self.brain.add_hidden_layer(8)
-		self.brain.add_hidden_layer(3)
-		self.brain.randomize()
+		self.dna = NeuralNetwork(5, 3)
+		self.dna.add_hidden_layer(8)
+		self.dna.add_hidden_layer(3)
+		self.dna.randomize()
 		if genes:
-			self.brain.setParameters(genes)
+			self.dna.setParameters(genes)
 
 		self.playerControl = False
-		self.brainControl = True
+		self.dnaControl = True
 		self.points = []
 
 	def step(self):
@@ -90,13 +100,13 @@ class Car:
 			self.collided = True
 			return
 
-		self.brain.setInput(info)
+		self.dna.setInput(info)
 		# think:
-		self.brain.calculate()
-		actions = self.brain.getOutput()
+		self.dna.calculate()
+		actions = self.dna.getOutput()
 
 		# actions check
-		if self.brainControl:
+		if self.dnaControl:
 			if actions[0] > 0.5:
 				self.dir.rotate(0.05)
 			if actions[1] > 0.5:
@@ -137,7 +147,7 @@ class Car:
 		
 		for i, sensor in enumerate(self.sensors):
 			intersections = []
-			for line in trackLines:
+			for line in Track._t.trackLines:
 				point = intersection_point(sensor, line)
 				if point:
 					# calculate t
@@ -159,170 +169,143 @@ class Car:
 		return weights
 
 	def draw(self):
-		if debug:
-			for s in self.sensors:
-				pygame.draw.line(win, (0,255,0), s[0], s[1])
-		
 		pygame.draw.circle(win, self.color, self.pos, 10)
 		pygame.draw.line(win, (255,0,0), self.pos, self.pos + self.dir * 20)
-		for p in self.points:
-			if p:
-				pygame.draw.circle(win, (0,0,255), p, 5)
-		
+		if debug and not self.collided:
+			for s in self.sensors:
+				pygame.draw.line(win, (0,255,0), s[0], s[1])
+			for p in self.points:
+				if p:
+					pygame.draw.circle(win, (0,0,255), p, 5)	
+
 def sort_key(x):
 	return x.score
 
-def population():
-	Car._reg.sort(reverse = True, key = sort_key)
-	best1 = Car._reg[0].genes
-	best2 = Car._reg[1].genes
-	best3 = Car._reg[2].genes
-	
-	population_record.append((best1, Car._reg[0].score))
-	
-	# print("best genes: ", end="")
-	# print(best_genes)
-	
-	Car._reg = []
-	for i in range(population_size):
-		new_genes = []
-		best_choose = choice([best1, best1, best1, best2, best2, best3])
-		
-		# alter genes
-		
-		val = []
-		for value in range(5):
-			if randint(0,100) <= 5:
-				adjust = uniform(-0.7,0.7)
-			else:
-				adjust = uniform(-0.1,0.1)
-			new_val = best_choose[value] + adjust
-			#limit: (-1,1)
-			if new_val > 1:
-				new_val = 1
-			elif new_val < -1:
-				new_val = -1
-			val.append(new_val)
-		new_genes = val
-		Car(new_genes)
+class Population:
+	def __init__(self, size):
+		self.generation = -1
+		self.populationSize = size
+		self.mutationRate = 0.05
+		self.matingPool = []
+	def createMatingPool(self):
+		"""probabilistic method"""
 
-def check_population():
-	global time
-	list = []
-	for d in Car._reg:
-		list.append(d.collided)
-	if all(list):
-		time = cycle_time
-
-# def pop_stats():
-# 	drawtext("Generation: "+str(gen_count), (- win_width /2 + 10,win_height /2 - 10))
-# 	drawtext("time: "+str(time), (- win_width /2 + 10,win_height /2 - 25))
+		# calculate total fitness
+		totalFitness = 0
+		for car in Car._reg:
+			totalFitness += car.score
+		
+		# normalize score
+		for car in Car._reg:
+			car.score /= totalFitness
+		
+		# create mating pool
+		self.matingPool = []
+		for car in Car._reg:
+			for i in range(int(car.score * 100)):
+				self.matingPool.append(car)
+		
+	def createNextGeneration(self):
+		# create new generation
+		self.generation += 1
+		newGen = []
+		for i, car in enumerate(Car._reg):
+			car1 = self.matingPool[randint(0, len(self.matingPool)-1)]
+			car2 = self.matingPool[randint(0, len(self.matingPool)-1)]
+			# crossover
+			# create a new car with genes from both parents and add to newGen
+			newGenes = crossOver(car1.dna.getParameters(), car2.dna.getParameters())
+			newCar = Car(genes=newGenes)
+			newGen.append(newCar)
+		
+		# mutate
+		for car in newGen:
+			car.dna.mutate(self.mutationRate)
+		
+		# replace old generation
+		Car._reg = newGen
+	
+	def createFirstGeneration(self, track):
+		# create first generation
+		self.generation += 1
+		newGen = []
+		for i in range(self.populationSize):
+			newGen.append(Car(pos = track.startPos))
+		
+		# replace old generation
+		Car._reg = newGen
 
 ################################################################################ Setup:
-pygame.init()
 
-myfont = pygame.font.SysFont('Arial', 12)
-fpsClock = pygame.time.Clock()
-fps = 60
+if __name__ == "__main__":
 
-win_width = 1280
-win_height = 720
-win = pygame.display.set_mode((win_width,win_height))
+	Track._font = myfont
+	Track._win = win
+	track = Track()
+	track.load("1")
 
-trackLines = []
-# trackLines.append((Vector(randint(0,win_width), randint(0,win_height)), Vector(randint(0,win_width), randint(0,win_height))))
+	training = True
 
-# load track
-from tracks import *
-startPos = tup2vec(track3_pos[0]) + Vector(win_width /2, win_height /2)
+	debug = True
 
-adjusted = []
-for line in track3:
-	adjusted.append((tup2vec(line[0]) + Vector(win_width /2, win_height /2), tup2vec(line[1]) + Vector(win_width /2, win_height /2)))
-trackLines = adjusted
+	Globals()
 
-draw_track = False
-training = False
+	population = Population(100)
 
-recording = True
-debug = True
-self_control = True
+	if training:
+		population.createFirstGeneration(track)
 
-Globals()
-
-population_size = 1
-population_record = []
-cycle_time = 20000
-gen_count = 1	
-time = 0
-
-if training:
-	for i in range(population_size):
-		Car(pos = vectorCopy(startPos))
-
-if draw_track:
-	border = []
-	mouse_pressed = False
-
-# d = Player(None, (255,0,0))
-# p = Car(genes1, (0,255,0))
-# p2 = Car(genes2, (0,0,255))
-
-# c = Car()
-# c.playerControl = True
-
-################################################################################ Main Loop:
-pause = False
-run = True
-while run:
-	for event in pygame.event.get():
-		if event.type == pygame.QUIT:
+	################################################################################ Main Loop:
+	pause = False
+	run = True
+	while run:
+		for event in pygame.event.get():
+			if event.type == pygame.QUIT:
+				run = False
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_r:
+					Car._reg[0].dna.randomize()
+						
+				if event.key == pygame.K_d:
+					debug = not debug
+				if event.key == pygame.K_p:
+					print(Car._reg[0].dna.getParameters())
+				if event.key == pygame.K_c:
+					self_control = not self_control
+				# if event.key == pygame.K_s:
+					# for p in Perseptron._reg:
+						# p.randomize()
+		keys = pygame.key.get_pressed()
+		if keys[pygame.K_ESCAPE]:
 			run = False
-		if event.type == pygame.KEYDOWN:
-			if event.key == pygame.K_r:
-				Car._reg[0].brain.randomize()
-					
-			if event.key == pygame.K_d:
-				debug = not debug
-			if event.key == pygame.K_p:
-				print(Car._reg[0].brain.getParameters())
-			if event.key == pygame.K_c:
-				self_control = not self_control
-			# if event.key == pygame.K_s:
-				# for p in Perseptron._reg:
-					# p.randomize()
-	keys = pygame.key.get_pressed()
-	if keys[pygame.K_ESCAPE]:
-		run = False
-	
-	if pause:
-		continue
-
-	#background:
-	win.fill((100,100,100))
-
-	for d in Car._reg:
-		d.step()
-	for d in Car._reg:
-		d.draw()
-	
-	for line in trackLines:
-		pygame.draw.line(win, (255,255,255), line[0], line[1])
-
-	# if training:
-	# 	time += 1
-	# 	pop_stats()
-	# 	check_population()
-	
-	# 	if time == cycle_time:
-	# 		population()
-	# 		gen_count += 1
-	# 		time = 0
 		
-	pygame.display.update()
-	fpsClock.tick(fps)
+		if pause:
+			continue
 
-pygame.quit()
+		#background:
+		win.fill((100,100,100))
+
+		for d in Car._reg:
+			d.step()
+		for d in Car._reg:
+			d.draw()
+		
+		track.draw()
+
+		# if training:
+		# 	time += 1
+		# 	pop_stats()
+		# 	check_population()
+		
+		# 	if time == cycle_time:
+		# 		population()
+		# 		gen_count += 1
+		# 		time = 0
+			
+		pygame.display.update()
+		fpsClock.tick(fps)
+
+	pygame.quit()
 
 
 

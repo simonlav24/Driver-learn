@@ -78,6 +78,10 @@ class NeuralNetwork:
             self.add_hidden_layer(layerParams["nNodes"])
             self.hiddenLayers[-1].setParameters(layerParams)
 
+    def mutate(self, mutationRate):
+        for layer in self.hiddenLayers:
+            layer.mutate(mutationRate)
+
 class Perceptron:
     def __init__(self, size):
         self.size = size
@@ -103,6 +107,13 @@ class Perceptron:
         self.size = parameters["size"]
         self.weights = parameters["weights"]
         self.bias = parameters["bias"]
+    def mutate(self, mutationRate):
+        for i in range(len(self.weights)):
+            if uniform(0, 1) < mutationRate:
+                # complete randomize mutation
+                self.weights[i] = uniform(-1, 1)
+        if uniform(0, 1) < mutationRate:
+            self.bias = uniform(-1, 1)
 
 class FCLayer:
     def __init__(self, nNodes, nInput):
@@ -136,4 +147,12 @@ class FCLayer:
         for nodeParams in parameters["nodes"]:
             self.nodes.append(Perceptron(nodeParams["size"]))
             self.nodes[-1].setParameters(nodeParams)
+    def mutate(self, mutationRate):
+        for node in self.nodes:
+            node.mutate(mutationRate)
 
+def crossOver(genes1, genes2):
+    """return genes that are a cross over of genes1 and genes2"""
+    print(genes1)
+    print(genes2)
+    print("crossOver: not implemented")
