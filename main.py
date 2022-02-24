@@ -242,7 +242,7 @@ for line in track3:
 trackLines = adjusted
 
 draw_track = False
-training = True
+training = False
 
 recording = True
 debug = True
@@ -250,7 +250,7 @@ self_control = True
 
 Globals()
 
-population_size = 100
+population_size = 1
 population_record = []
 cycle_time = 20000
 gen_count = 1	
@@ -275,19 +275,17 @@ if draw_track:
 pause = False
 run = True
 while run:
-	#pygame.time.delay(1)
 	for event in pygame.event.get():
 		if event.type == pygame.QUIT:
 			run = False
 		if event.type == pygame.KEYDOWN:
-			#key pressed once:
 			if event.key == pygame.K_r:
 				Car._reg[0].brain.randomize()
 					
 			if event.key == pygame.K_d:
 				debug = not debug
 			if event.key == pygame.K_p:
-				pause = not pause
+				print(Car._reg[0].brain.getParameters())
 			if event.key == pygame.K_c:
 				self_control = not self_control
 			# if event.key == pygame.K_s:

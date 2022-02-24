@@ -3,6 +3,12 @@
 from math import exp
 from random import uniform
 
+def sigmoid(x):
+    return 1.0 / (1.0 + exp(-x))
+
+def relu(x):
+    return max(0, x)
+
 class NeuralNetwork:
     def __init__(self, nInput, nOutput):
         self.nInput = nInput
@@ -53,12 +59,24 @@ class NeuralNetwork:
         for layer in self.hiddenLayers:
             layer.randomize()
 
-def sigmoid(x):
-    return 1.0 / (1.0 + exp(-x))
-
-def relu(x):
-    return max(0, x)
-
+    def getParameters(self):
+        params = {
+            "nInput": self.nInput,
+            "nOutput": self.nOutput,
+            "nHiddenLayers": len(self.hiddenLayers),
+        }
+        learnedParams = []
+        for layer in self.hiddenLayers:
+            learnedParams.append(layer.getParameters())
+        params["learnedParams"] = learnedParams
+        return params
+    def setParameters(self, parameters):
+        self.nInput = parameters["nInput"]
+        self.nOutput = parameters["nOutput"]
+        self.hiddenLayers = []
+        for layerParams in parameters["learnedParams"]:
+            self.add_hidden_layer(layerParams["nNodes"])
+            self.hiddenLayers[-1].setParameters(layerParams)
 
 class Perceptron:
     def __init__(self, size):
@@ -75,9 +93,20 @@ class Perceptron:
     def calculate(self):
         self.output = sigmoid(sum([self.input[i] * self.weights[i] for i in range(len(self.input))]) + self.bias)
         return self.output
+    def getParameters(self):
+        return {
+            "size": self.size,
+            "weights": self.weights,
+            "bias": self.bias
+        }
+    def setParameters(self, parameters):
+        self.size = parameters["size"]
+        self.weights = parameters["weights"]
+        self.bias = parameters["bias"]
 
 class FCLayer:
     def __init__(self, nNodes, nInput):
+        self.nInput = nInput
         self.nodes = [Perceptron(nInput) for i in range(nNodes)]
     def setInput(self, input):
         for node in self.nodes:
@@ -91,5 +120,20 @@ class FCLayer:
     def randomize(self):
         for node in self.nodes:
             node.randomize()
+    def getParameters(self):
+        params = {
+            "nInput": self.nInput,
+            "nNodes": len(self.nodes),
+        }
+        learnedParams = []
+        for node in self.nodes:
+            learnedParams.append(node.getParameters())
+        params["nodes"] = learnedParams
+        return params
+    def setParameters(self, parameters):
+        self.nInput = parameters["nInput"]
+        self.nodes = []
+        for nodeParams in parameters["nodes"]:
+            self.nodes.append(Perceptron(nodeParams["size"]))
+            self.nodes[-1].setParameters(nodeParams)
 
-    
