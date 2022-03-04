@@ -59,7 +59,8 @@ class Track:
 		self.startPos = data['startPos']
 		self.startDir = data['startDir']
 		self.trackLines = data['trackLines']
-		self.scoreLines = data['scoreLines']
+		if 'scoreLines' in data:
+			self.scoreLines = data['scoreLines']
 		self.lineSelected = len(self.trackLines) - 1
 	def updateInfo(self):
 		self.namesurf = Track._font.render(self.name, False, (255,255,255))

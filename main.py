@@ -1,4 +1,4 @@
-import pygame
+import pygame, json
 from vector import *
 from neuralNetwork import *
 from trackMaker import Track
@@ -10,7 +10,6 @@ from random import uniform, randint, choice
 # output: a vector of probability for the best action. multiple actions are also ok
 # actions: stir left, stir right, drive forward
 
-# track maker, saved in json for practice.
 # nice pictures, car sprites to the repository
 
 TO_SQUARE = 1/sqrt(2)
@@ -51,12 +50,6 @@ def is_intersecting(line1, line2):
 		return True
 	return False
 
-class Globals:
-	_g = None
-	def __init__(self):
-		Globals._g = self
-		self.friction = 0.95
-
 class Car:
 	_reg = []
 	def __init__(self, pos=None, genes = None, color = None):
@@ -77,6 +70,7 @@ class Car:
 		self.actions = {"left":False, "right":False, "forward":False}
 		self.collided = False
 		self.score = 0
+		self.scoreBarIndex = 0
 		
 		self.dna = NeuralNetwork(5, 3)
 		self.dna.add_hidden_layer(8)
@@ -124,12 +118,16 @@ class Car:
 
 		# physics:
 		self.vel += self.acc
-		self.vel *= Globals._g.friction # limit vel(?)
+		self.vel *= 0.95 # limit vel(?)
 		self.pos += self.vel
 		self.acc *= 0.0
 		
 		# scoring
-		self.score += 1
+		line = [self.pos, self.pos + self.dir * 20]
+		if is_intersecting(line, Track._t.scoreLines[self.scoreBarIndex]):
+			self.score += 1
+			self.scoreBarIndex = (self.scoreBarIndex + 1) % len(Track._t.scoreLines)
+			ScoreIndicator(self.pos)
 	
 	def sense(self):
 		# check sensors and return number (0,1) for each sensor.
@@ -150,10 +148,6 @@ class Car:
 			for line in Track._t.trackLines:
 				point = intersection_point(sensor, line)
 				if point:
-					# calculate t
-					# t = (point - self.pos).getMag() / length
-					# self.points[i] = point
-					# weights[i] = t
 					intersections.append(point)
 			if len(intersections) > 0:
 				# pick the closest to the car and use that
@@ -164,8 +158,6 @@ class Car:
 
 				self.points[i] = closest
 				weights[i] = (closest - self.pos).getMag() / length
-				
-			
 		return weights
 
 	def draw(self):
@@ -187,6 +179,11 @@ class Population:
 		self.populationSize = size
 		self.mutationRate = 0.05
 		self.matingPool = []
+
+		self.time = 0
+		self.generationTime = fps * 20
+		self.weakKillTime = fps * 5
+		self.record = {}
 	def createMatingPool(self):
 		"""probabilistic method"""
 
@@ -196,26 +193,32 @@ class Population:
 			totalFitness += car.score
 		
 		# normalize score
-		for car in Car._reg:
-			car.score /= totalFitness
+		# for car in Car._reg:
+			# car.score /= totalFitness
 		
 		# create mating pool
 		self.matingPool = []
-		for car in Car._reg:
-			for i in range(int(car.score * 100)):
-				self.matingPool.append(car)
+		# for car in Car._reg:
+			# for i in range(int(car.score * 100)):
+				# self.matingPool.append(car)
+
+		for i in range(self.populationSize):
+			score = Car._reg[i].score
+			if score >= 1:
+				for j in range(int(score)**2):
+					self.matingPool.append(Car._reg[i])
 		
 	def createNextGeneration(self):
 		# create new generation
 		self.generation += 1
 		newGen = []
-		for i, car in enumerate(Car._reg):
-			car1 = self.matingPool[randint(0, len(self.matingPool)-1)]
-			car2 = self.matingPool[randint(0, len(self.matingPool)-1)]
+		for i in range(len(Car._reg)):
+			car1 = choice(self.matingPool)
+			car2 = choice(self.matingPool)
 			# crossover
 			# create a new car with genes from both parents and add to newGen
 			newGenes = crossOver(car1.dna.getParameters(), car2.dna.getParameters())
-			newCar = Car(genes=newGenes)
+			newCar = Car(genes=newGenes, pos = track.startPos)
 			newGen.append(newCar)
 		
 		# mutate
@@ -230,10 +233,64 @@ class Population:
 		self.generation += 1
 		newGen = []
 		for i in range(self.populationSize):
+			# create new dna
 			newGen.append(Car(pos = track.startPos))
 		
 		# replace old generation
 		Car._reg = newGen
+	def recordGenes(self):
+		# get the best scoring car
+		genDict = {}
+		genString = "gen" + str(self.generation).zfill(3)
+
+		best = Car._reg[0]
+		for car in Car._reg:
+			if car.score > best.score:
+				best = car
+
+		genDict["highestScore"] = best.score
+		genDict["bestGenes"] = best.dna.getParameters()
+		self.record[genString] = genDict
+		
+	def step(self):
+		# if all cars are dead, create new generation
+		noMoreCars = True
+		for car in Car._reg:
+			if not car.collided:
+				noMoreCars = False
+				break
+		
+		if noMoreCars:
+			self.time = self.generationTime
+		
+		# kill the weak
+		if self.time == self.weakKillTime:
+			for car in Car._reg:
+				if car.score <= 1:
+					car.collided = True
+
+		if self.time >= self.generationTime:
+			self.recordGenes()
+			self.createMatingPool()
+			self.createNextGeneration()
+			self.time = 0
+
+		if self.time % (fps) == 0:
+			print(self.time / fps)
+		self.time += 1
+
+class ScoreIndicator:
+	_reg = []
+	def __init__(self, pos):
+		ScoreIndicator._reg.append(self)
+		self.pos = vectorCopy(pos)
+		self.time = 0
+	def step(self):
+		self.time += 1
+		if self.time >= 0.5 * fps:
+			ScoreIndicator._reg.remove(self)
+	def draw(self):
+		pygame.draw.circle(win, (255,255,255), self.pos, self.time)
 
 ################################################################################ Setup:
 
@@ -242,20 +299,17 @@ if __name__ == "__main__":
 	Track._font = myfont
 	Track._win = win
 	track = Track()
-	track.load("1")
+	track.load("3")
 
 	training = True
-
-	debug = True
-
-	Globals()
+	debug = False
 
 	population = Population(100)
 
 	if training:
 		population.createFirstGeneration(track)
 
-	################################################################################ Main Loop:
+	# main loop:
 	pause = False
 	run = True
 	while run:
@@ -272,9 +326,7 @@ if __name__ == "__main__":
 					print(Car._reg[0].dna.getParameters())
 				if event.key == pygame.K_c:
 					self_control = not self_control
-				# if event.key == pygame.K_s:
-					# for p in Perseptron._reg:
-						# p.randomize()
+
 		keys = pygame.key.get_pressed()
 		if keys[pygame.K_ESCAPE]:
 			run = False
@@ -287,28 +339,27 @@ if __name__ == "__main__":
 
 		for d in Car._reg:
 			d.step()
+
+		for s in ScoreIndicator._reg:
+			s.step()
+
+		population.step()
+		
 		for d in Car._reg:
 			d.draw()
 		
 		track.draw()
-
-		# if training:
-		# 	time += 1
-		# 	pop_stats()
-		# 	check_population()
-		
-		# 	if time == cycle_time:
-		# 		population()
-		# 		gen_count += 1
-		# 		time = 0
+		for s in ScoreIndicator._reg:
+			s.draw()
 			
 		pygame.display.update()
 		fpsClock.tick(fps)
 
 	pygame.quit()
 
+# save record
 
-
-
+with open("record.json", "w") as f:
+	f.write((json.dumps(population.record, indent=4, sort_keys=True)))
 
 

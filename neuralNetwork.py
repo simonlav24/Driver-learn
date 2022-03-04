@@ -153,6 +153,52 @@ class FCLayer:
 
 def crossOver(genes1, genes2):
     """return genes that are a cross over of genes1 and genes2"""
-    print(genes1)
-    print(genes2)
-    print("crossOver: not implemented")
+    # print(genes1)
+    # print("")
+    # print(genes2)
+    # print("")
+    # print("crossOver: not implemented")
+    
+    nInput = genes1["nInput"]
+    nOutput = genes1["nOutput"]
+    nHiddenLayers = genes1["nHiddenLayers"]
+
+    learnedParams = []
+    for i, l in enumerate(genes1["learnedParams"]):
+        layer = {}
+        layer["nNodes"] = l["nNodes"]
+        layer["nInput"] = l["nInput"]
+
+        layer["nodes"] = []
+        for j, n in enumerate(l["nodes"]):
+            node = {}
+            node["size"] = n["size"]
+            
+            node["weights"] = []
+            for k, w in enumerate(n["weights"]):
+                weight1 = w
+                weight2 = genes2["learnedParams"][i]["nodes"][j]["weights"][k]
+
+                if uniform(0, 1) < 0.5:
+                    node["weights"].append(weight1)
+                else:
+                    node["weights"].append(weight2)
+
+            
+            bias1 = n["bias"]
+            bias2 = genes2["learnedParams"][i]["nodes"][j]["bias"]
+
+            if uniform(0, 1) < 0.5:
+                node["bias"] = bias1
+            else:
+                node["bias"] = bias2
+                
+            layer["nodes"].append(node)
+            
+        learnedParams.append(layer)
+    return {
+        "nInput": nInput,
+        "nOutput": nOutput,
+        "nHiddenLayers": nHiddenLayers,
+        "learnedParams": learnedParams
+    }
